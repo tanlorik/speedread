@@ -90,13 +90,29 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 15px;
+            gap: 25px;
             width: 100%;
-            max-width: 400px;
+            max-width: 600px;
         }
 
-        #speed-slider {
+        .control-group {
             width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-with-label {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #888;
+        }
+
+        #speed-slider, #progress-slider {
+            flex: 1;
             cursor: pointer;
             accent-color: #ff4d4d;
         }
@@ -107,11 +123,10 @@
             height: 150px;
             border-top: 2px solid #333;
             border-bottom: 2px solid #333;
-            margin: 40px 0;
+            margin-bottom: 10px;
             font-family: 'Courier New', Courier, monospace;
             font-size: 48px;
             overflow: hidden;
-            /* Remove flex centering to use absolute positioning for the word */
         }
 
         /* Guide lines */
@@ -120,7 +135,7 @@
             content: "";
             position: absolute;
             left: 50%;
-            width: 2px; /* Slightly thicker for visibility */
+            width: 4px;
             height: 20px;
             background: #555;
             z-index: 10;
@@ -136,7 +151,6 @@
             top: 50%;
             white-space: pre;
             color: #eee;
-            /* We will use transform for alignment in JS */
         }
 
         .orp {
@@ -144,18 +158,17 @@
         }
 
         .controls-hint {
-            color: #666;
+            color: #555;
             font-size: 14px;
-            margin-top: 20px;
+            margin-top: 10px;
         }
 
-        #stats {
-            margin-top: 10px;
+        #word-stats, #wpm-stats {
             color: #888;
             font-size: 18px;
         }
 
-        #progress-bar {
+        #progress-bar-top {
             position: absolute;
             bottom: 0;
             left: 0;
@@ -199,10 +212,22 @@
         <div class="reader-ui">
             <div id="reader-container">
                 <div id="word-display"></div>
-                <div id="progress-bar"></div>
+                <div id="progress-bar-top"></div>
             </div>
-            <input type="range" id="speed-slider" min="100" max="1500" step="10">
-            <div id="stats">0 wpm | 0%</div>
+            
+            <div class="control-group">
+                <div id="word-stats">Word 0 of 0</div>
+                <input type="range" id="progress-slider" min="0" value="0" step="1">
+            </div>
+
+            <div class="control-group">
+                <div id="wpm-stats">0 wpm</div>
+                <div class="slider-with-label">
+                    <span>Speed:</span>
+                    <input type="range" id="speed-slider" min="100" max="1500" step="10">
+                </div>
+            </div>
+
             <div class="controls-hint">Space: Play/Pause | Arrows: Step | Esc: Exit</div>
         </div>
     </div>
@@ -216,9 +241,11 @@
         const startBtn = document.getElementById('start-btn');
         const backBtn = document.getElementById('back-btn');
         const wordDisplay = document.getElementById('word-display');
-        const statsDisplay = document.getElementById('stats');
-        const progressBar = document.getElementById('progress-bar');
+        const wordStats = document.getElementById('word-stats');
+        const wpmStats = document.getElementById('wpm-stats');
+        const progressBarTop = document.getElementById('progress-bar-top');
         const speedSlider = document.getElementById('speed-slider');
+        const progressSlider = document.getElementById('progress-slider');
 
         let words = [];
         let currentIndex = 0;
@@ -227,6 +254,7 @@
         let startTime = 0;
         let pausedDuration = 0;
         let lastPauseTime = 0;
+        let isRamping = true; 
         const RAMP_DURATION_MS = 10000; // 10 seconds ramping
 
         startBtn.onclick = () => {
@@ -237,20 +265,27 @@
             currentIndex = 0;
             startTime = Date.now();
             pausedDuration = 0;
+            isRamping = true;
             
             setupScreen.style.display = 'none';
             readerScreen.style.display = 'flex';
             
+            progressSlider.max = words.length - 1;
             speedSlider.value = startWpmInput.value;
             renderWord();
             play();
         };
 
         speedSlider.oninput = () => {
-            // If user touches the slider, we effectively "disable" the auto-ramping 
-            // by setting the startTime to a very distant past, or just override.
-            // For simplicity, let's say the slider shows the current target speed.
-            renderWord(); // Update stats display immediately
+            // Manual adjustment disables auto-ramping
+            isRamping = false;
+            renderWord();
+            if (isPlaying) scheduleNext();
+        };
+
+        progressSlider.oninput = () => {
+            currentIndex = parseInt(progressSlider.value);
+            renderWord();
             if (isPlaying) scheduleNext();
         };
 
@@ -270,6 +305,7 @@
         }
 
         function getCurrentTargetWpm() {
+            if (!isRamping) return parseInt(speedSlider.value);
             if (!isPlaying && lastPauseTime === 0) return parseInt(startWpmInput.value);
             
             const now = isPlaying ? Date.now() : lastPauseTime;
@@ -278,7 +314,10 @@
             const startWpm = parseInt(startWpmInput.value);
             const endWpm = parseInt(endWpmInput.value);
             
-            if (elapsed >= RAMP_DURATION_MS) return endWpm;
+            if (elapsed >= RAMP_DURATION_MS) {
+                isRamping = false; // Finished ramping
+                return endWpm;
+            }
             
             const rampProgress = elapsed / RAMP_DURATION_MS;
             return Math.round(startWpm + (rampProgress * (endWpm - startWpm)));
@@ -315,15 +354,18 @@
             const offset = beforeWidth + (orpWidth / 2);
             wordDisplay.style.transform = `translate(calc(-${offset}px), -50%)`;
 
-            // Update stats and slider
+            // Update sliders and stats
             const progress = words.length > 1 ? currentIndex / (words.length - 1) : 1;
             
-            // Only update slider if it's currently in the ramping phase
             const currentWpm = getCurrentTargetWpm();
-            speedSlider.value = currentWpm;
+            if (isRamping) {
+                speedSlider.value = currentWpm;
+            }
             
-            statsDisplay.textContent = `${currentWpm} wpm | Word ${currentIndex + 1} of ${words.length}`;
-            progressBar.style.width = `${progress * 100}%`;
+            progressSlider.value = currentIndex;
+            wordStats.textContent = `Word ${currentIndex + 1} of ${words.length}`;
+            wpmStats.textContent = `${currentWpm} wpm`;
+            progressBarTop.style.width = `${progress * 100}%`;
         }
 
         function next() {

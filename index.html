@@ -260,6 +260,12 @@
         startBtn.onclick = () => {
             const text = textInput.value.trim();
             if (!text) return alert("Please enter some text.");
+
+            const startWpm = parseInt(startWpmInput.value);
+            const endWpm = parseInt(endWpmInput.value);
+            if (endWpm < startWpm) {
+                return alert("End WPM must be greater than or equal to Start WPM.");
+            }
             
             words = text.split(/\s+/).filter(w => w.length > 0);
             currentIndex = 0;

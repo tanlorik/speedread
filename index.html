@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed Reader</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #ccc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #setup-screen {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 80%;
+            max-width: 600px;
+            padding: 20px;
+            background: #111;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 4px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .config {
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+        }
+
+        .config-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+        }
+
+        input[type="number"] {
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 12px;
+            background: #444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        #reader-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        .reader-ui {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        #speed-slider {
+            width: 100%;
+            cursor: pointer;
+            accent-color: #ff4d4d;
+        }
+
+        #reader-container {
+            position: relative;
+            width: 100%;
+            height: 150px;
+            border-top: 2px solid #333;
+            border-bottom: 2px solid #333;
+            margin: 40px 0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 48px;
+            overflow: hidden;
+            /* Remove flex centering to use absolute positioning for the word */
+        }
+
+        /* Guide lines */
+        #reader-container::before,
+        #reader-container::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            width: 2px; /* Slightly thicker for visibility */
+            height: 20px;
+            background: #555;
+            z-index: 10;
+            transform: translateX(-50%);
+        }
+
+        #reader-container::before { top: 0; }
+        #reader-container::after { bottom: 0; }
+
+        #word-display {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            white-space: pre;
+            color: #eee;
+            /* We will use transform for alignment in JS */
+        }
+
+        .orp {
+            color: #ff4d4d;
+        }
+
+        .controls-hint {
+            color: #666;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+
+        #stats {
+            margin-top: 10px;
+            color: #888;
+            font-size: 18px;
+        }
+
+        #progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: #444;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: transparent;
+            border: 1px solid #444;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="setup-screen">
+        <h2>Speed Reader</h2>
+        <textarea id="text-input" placeholder="Paste your text here..."></textarea>
+        <div class="config">
+            <div class="config-item">
+                <label>Start WPM</label>
+                <input type="number" id="start-wpm" value="300" min="100" max="2000">
+            </div>
+            <div class="config-item">
+                <label>End WPM</label>
+                <input type="number" id="end-wpm" value="750" min="100" max="2000">
+            </div>
+        </div>
+        <button id="start-btn">Start Reading</button>
+    </div>
+
+    <div id="reader-screen">
+        <button class="back-btn" id="back-btn">← Back</button>
+        <div class="reader-ui">
+            <div id="reader-container">
+                <div id="word-display"></div>
+                <div id="progress-bar"></div>
+            </div>
+            <input type="range" id="speed-slider" min="100" max="1500" step="10">
+            <div id="stats">0 wpm | 0%</div>
+            <div class="controls-hint">Space: Play/Pause | Arrows: Step | Esc: Exit</div>
+        </div>
+    </div>
+
+    <script>
+        const setupScreen = document.getElementById('setup-screen');
+        const readerScreen = document.getElementById('reader-screen');
+        const textInput = document.getElementById('text-input');
+        const startWpmInput = document.getElementById('start-wpm');
+        const endWpmInput = document.getElementById('end-wpm');
+        const startBtn = document.getElementById('start-btn');
+        const backBtn = document.getElementById('back-btn');
+        const wordDisplay = document.getElementById('word-display');
+        const statsDisplay = document.getElementById('stats');
+        const progressBar = document.getElementById('progress-bar');
+        const speedSlider = document.getElementById('speed-slider');
+
+        let words = [];
+        let currentIndex = 0;
+        let isPlaying = false;
+        let timer = null;
+        let startTime = 0;
+        let pausedDuration = 0;
+        let lastPauseTime = 0;
+        const RAMP_DURATION_MS = 10000; // 10 seconds ramping
+
+        startBtn.onclick = () => {
+            const text = textInput.value.trim();
+            if (!text) return alert("Please enter some text.");
+            
+            words = text.split(/\s+/).filter(w => w.length > 0);
+            currentIndex = 0;
+            startTime = Date.now();
+            pausedDuration = 0;
+            
+            setupScreen.style.display = 'none';
+            readerScreen.style.display = 'flex';
+            
+            speedSlider.value = startWpmInput.value;
+            renderWord();
+            play();
+        };
+
+        speedSlider.oninput = () => {
+            // If user touches the slider, we effectively "disable" the auto-ramping 
+            // by setting the startTime to a very distant past, or just override.
+            // For simplicity, let's say the slider shows the current target speed.
+            renderWord(); // Update stats display immediately
+            if (isPlaying) scheduleNext();
+        };
+
+        backBtn.onclick = () => {
+            pause();
+            readerScreen.style.display = 'none';
+            setupScreen.style.display = 'flex';
+        };
+
+        function getORPIndex(word) {
+            const length = word.length;
+            if (length <= 1) return 0;
+            if (length <= 5) return 1;
+            if (length <= 9) return 2;
+            if (length <= 13) return 3;
+            return 4;
+        }
+
+        function getCurrentTargetWpm() {
+            if (!isPlaying && lastPauseTime === 0) return parseInt(startWpmInput.value);
+            
+            const now = isPlaying ? Date.now() : lastPauseTime;
+            const elapsed = now - startTime - pausedDuration;
+            
+            const startWpm = parseInt(startWpmInput.value);
+            const endWpm = parseInt(endWpmInput.value);
+            
+            if (elapsed >= RAMP_DURATION_MS) return endWpm;
+            
+            const rampProgress = elapsed / RAMP_DURATION_MS;
+            return Math.round(startWpm + (rampProgress * (endWpm - startWpm)));
+        }
+
+        function renderWord() {
+            if (currentIndex < 0) currentIndex = 0;
+            if (currentIndex >= words.length) {
+                currentIndex = words.length - 1;
+                pause();
+                return;
+            }
+
+            const word = words[currentIndex];
+            const orpIndex = getORPIndex(word);
+            
+            const before = word.slice(0, orpIndex);
+            const orp = word[orpIndex];
+            const after = word.slice(orpIndex + 1);
+
+            wordDisplay.innerHTML = `${before}<span class="orp">${orp}</span>${after}`;
+            
+            const orpSpan = wordDisplay.querySelector('.orp');
+            const beforeSpan = document.createElement('span');
+            beforeSpan.style.visibility = 'hidden';
+            beforeSpan.style.font = getComputedStyle(wordDisplay).font;
+            beforeSpan.textContent = before;
+            document.body.appendChild(beforeSpan);
+            
+            const beforeWidth = beforeSpan.offsetWidth;
+            const orpWidth = orpSpan.offsetWidth;
+            document.body.removeChild(beforeSpan);
+
+            const offset = beforeWidth + (orpWidth / 2);
+            wordDisplay.style.transform = `translate(calc(-${offset}px), -50%)`;
+
+            // Update stats and slider
+            const progress = words.length > 1 ? currentIndex / (words.length - 1) : 1;
+            
+            // Only update slider if it's currently in the ramping phase
+            const currentWpm = getCurrentTargetWpm();
+            speedSlider.value = currentWpm;
+            
+            statsDisplay.textContent = `${currentWpm} wpm | ${Math.round(progress * 100)}%`;
+            progressBar.style.width = `${progress * 100}%`;
+        }
+
+        function next() {
+            if (currentIndex < words.length - 1) {
+                currentIndex++;
+                renderWord();
+                if (isPlaying) scheduleNext();
+            } else {
+                pause();
+            }
+        }
+
+        function prev() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderWord();
+            }
+        }
+
+        function scheduleNext() {
+            const currentWpm = parseInt(speedSlider.value);
+            const delay = 60000 / currentWpm;
+            
+            clearTimeout(timer);
+            timer = setTimeout(next, delay);
+        }
+
+        function play() {
+            if (currentIndex >= words.length - 1) currentIndex = 0;
+            if (!isPlaying) {
+                if (lastPauseTime > 0) {
+                    pausedDuration += (Date.now() - lastPauseTime);
+                }
+            }
+            isPlaying = true;
+            scheduleNext();
+        }
+
+        function pause() {
+            if (isPlaying) {
+                lastPauseTime = Date.now();
+            }
+            isPlaying = false;
+            clearTimeout(timer);
+        }
+
+        function toggle() {
+            if (isPlaying) pause();
+            else play();
+        }
+
+        window.onkeydown = (e) => {
+            if (readerScreen.style.display === 'none') return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                toggle();
+            } else if (e.code === 'ArrowRight') {
+                pause();
+                next();
+            } else if (e.code === 'ArrowLeft') {
+                pause();
+                prev();
+            } else if (e.code === 'Escape') {
+                backBtn.onclick();
+            }
+        };
+    </script>
+</body>
+</html>

@@ -322,7 +322,7 @@
             const currentWpm = getCurrentTargetWpm();
             speedSlider.value = currentWpm;
             
-            statsDisplay.textContent = `${currentWpm} wpm | ${Math.round(progress * 100)}%`;
+            statsDisplay.textContent = `${currentWpm} wpm | Word ${currentIndex + 1} of ${words.length}`;
             progressBar.style.width = `${progress * 100}%`;
         }
 

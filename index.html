@@ -200,8 +200,8 @@
                 <input type="number" id="start-wpm" value="300" min="100" max="2000">
             </div>
             <div class="config-item">
-                <label>End WPM</label>
-                <input type="number" id="end-wpm" value="900" min="100" max="2000">
+                <label>Target WPM</label>
+                <input type="number" id="target-wpm" value="900" min="100" max="2000">
             </div>
         </div>
         <button id="start-btn">Start Reading</button>
@@ -217,14 +217,17 @@
             
             <div class="control-group">
                 <div id="word-stats">Word 0 of 0</div>
-                <input type="range" id="progress-slider" min="0" value="0" step="1">
+                <div class="slider-with-label">
+                    <span>Progress:</span>
+                    <input type="range" id="progress-slider" min="0" value="0" step="1">
+                </div>
             </div>
 
             <div class="control-group">
                 <div id="wpm-stats">0 wpm</div>
                 <div class="slider-with-label">
                     <span>Speed:</span>
-                    <input type="range" id="speed-slider" min="100" max="1500" step="10">
+                    <input type="range" id="speed-slider" min="100" max="2000" step="10">
                 </div>
             </div>
 
@@ -237,7 +240,7 @@
         const readerScreen = document.getElementById('reader-screen');
         const textInput = document.getElementById('text-input');
         const startWpmInput = document.getElementById('start-wpm');
-        const endWpmInput = document.getElementById('end-wpm');
+        const targetWpmInput = document.getElementById('target-wpm');
         const startBtn = document.getElementById('start-btn');
         const backBtn = document.getElementById('back-btn');
         const wordDisplay = document.getElementById('word-display');
@@ -262,9 +265,9 @@
             if (!text) return alert("Please enter some text.");
 
             const startWpm = parseInt(startWpmInput.value);
-            const endWpm = parseInt(endWpmInput.value);
-            if (endWpm < startWpm) {
-                return alert("End WPM must be greater than or equal to Start WPM.");
+            const targetWpm = parseInt(targetWpmInput.value);
+            if (targetWpm < startWpm) {
+                return alert("Target WPM must be greater than or equal to Start WPM.");
             }
             
             words = text.split(/\s+/).filter(w => w.length > 0);
@@ -277,13 +280,12 @@
             readerScreen.style.display = 'flex';
             
             progressSlider.max = words.length - 1;
-            speedSlider.value = startWpmInput.value;
+            speedSlider.value = startWpm;
             renderWord();
             play();
         };
 
         speedSlider.oninput = () => {
-            // Manual adjustment disables auto-ramping
             isRamping = false;
             renderWord();
             if (isPlaying) scheduleNext();
@@ -318,15 +320,15 @@
             const elapsed = now - startTime - pausedDuration;
             
             const startWpm = parseInt(startWpmInput.value);
-            const endWpm = parseInt(endWpmInput.value);
+            const targetWpm = parseInt(targetWpmInput.value);
             
             if (elapsed >= RAMP_DURATION_MS) {
-                isRamping = false; // Finished ramping
-                return endWpm;
+                isRamping = false;
+                return targetWpm;
             }
             
             const rampProgress = elapsed / RAMP_DURATION_MS;
-            return Math.round(startWpm + (rampProgress * (endWpm - startWpm)));
+            return Math.round(startWpm + (rampProgress * (targetWpm - startWpm)));
         }
 
         function renderWord() {
@@ -360,17 +362,20 @@
             const offset = beforeWidth + (orpWidth / 2);
             wordDisplay.style.transform = `translate(calc(-${offset}px), -50%)`;
 
-            // Update sliders and stats
             const progress = words.length > 1 ? currentIndex / (words.length - 1) : 1;
             
             const currentWpm = getCurrentTargetWpm();
+            const targetWpm = parseInt(targetWpmInput.value);
+
             if (isRamping) {
                 speedSlider.value = currentWpm;
+                wpmStats.textContent = `${currentWpm} wpm -> ${targetWpm} wpm`;
+            } else {
+                wpmStats.textContent = `${currentWpm} wpm`;
             }
             
             progressSlider.value = currentIndex;
             wordStats.textContent = `Word ${currentIndex + 1} of ${words.length}`;
-            wpmStats.textContent = `${currentWpm} wpm`;
             progressBarTop.style.width = `${progress * 100}%`;
         }
 
